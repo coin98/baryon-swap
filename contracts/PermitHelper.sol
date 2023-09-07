@@ -25,6 +25,8 @@ contract PermitHelper is TRC25 {
         bytes32 r, 
         bytes32 s
     ) external {
+        uint256 fee = estimateFee(0);
+        _chargeFeeFrom(msg.sender, address(0), fee);
         IERC20Permit(token).permit(owner, spender, value, deadline, v, r, s);
     }
 
@@ -35,6 +37,8 @@ contract PermitHelper is TRC25 {
         uint256 deadline,
         bytes memory signature
     ) external {
+        uint256 fee = estimateFee(0);
+        _chargeFeeFrom(msg.sender, address(0), fee);
         IERC721Permit(collection).permit(spender, tokenId, deadline, signature);
     }
 
