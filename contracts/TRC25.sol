@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: MIT
+
 // File: libraries/SafeMath.sol
 
 
 
-pragma solidity >=0.6.12;
+pragma solidity >=0.6.0;
 
 /**
  * @dev Wrappers over Solidity's arithmetic operations with added overflow
@@ -220,7 +220,7 @@ library SafeMath {
 
 
 
-pragma solidity >=0.6.12;
+pragma solidity >=0.6.2;
 
 /**
  * @dev Collection of functions related to the address type
@@ -412,7 +412,7 @@ library Address {
 
 
 
-pragma solidity >=0.6.12;
+pragma solidity >=0.6.0;
 
 /**
  * @dev Interface of the ERC165 standard, as defined in the
@@ -438,7 +438,7 @@ interface IERC165 {
 // File: interfaces/ITRC25.sol
 
 
-pragma solidity >=0.6.12;
+pragma solidity >=0.6.0;
 
 /**
  * @dev Interface of the VRC25 standard as defined in the EIP.
@@ -547,7 +547,7 @@ interface ITRC25 {
 // File: TRC25.sol
 
 
-pragma solidity >=0.6.12;
+pragma solidity >=0.6.2;
 
 
 
@@ -555,7 +555,6 @@ pragma solidity >=0.6.12;
 
 /**
  * @title Base TRC25 implementation
- * @author Terry (huybd@coin98.finance)
  * @notice TRC25 implementation for opt-in to gas sponsor program. This replace Ownable from OpenZeppelin as well.
  */
 abstract contract TRC25 is ITRC25, IERC165 {
@@ -578,9 +577,9 @@ abstract contract TRC25 is ITRC25, IERC165 {
     event FeeUpdated(uint256 fee);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
-    constructor(string memory name_, string memory symbol_, uint8 decimals_) public {
-        _name = name_;
-        _symbol = symbol_;
+    constructor(string memory name, string memory symbol, uint8 decimals_) internal {
+        _name = name;
+        _symbol = symbol;
         _decimals = decimals_;
         _owner = msg.sender;
     }
@@ -591,6 +590,20 @@ abstract contract TRC25 is ITRC25, IERC165 {
     modifier onlyOwner() {
         require(_owner == msg.sender, "TRC25: caller is not the owner");
         _;
+    }
+
+    /**
+     * @notice Name of token
+     */
+    function name() public view returns (string memory) {
+        return _name;
+    }
+
+    /**
+     * @notice Symbol of token
+     */
+    function symbol() public view returns (string memory) {
+        return _symbol;
     }
 
     /**
@@ -611,11 +624,11 @@ abstract contract TRC25 is ITRC25, IERC165 {
 
     /**
      * @notice Returns the amount of tokens owned by `account`.
-     * @param owner_ The address to query the balance of.
+     * @param owner The address to query the balance of.
      * @return An uint256 representing the amount owned by the passed address.
      */
-    function balanceOf(address owner_) public view override returns (uint256) {
-        return _balances[owner_];
+    function balanceOf(address owner) public view override returns (uint256) {
+        return _balances[owner];
     }
 
     /**
@@ -625,8 +638,8 @@ abstract contract TRC25 is ITRC25, IERC165 {
      *
      * This value changes when {approve} or {transferFrom} are called.
      */
-    function allowance(address owner_,address spender) public view override returns (uint256){
-        return _allowances[owner_][spender];
+    function allowance(address owner,address spender) public view override returns (uint256){
+        return _allowances[owner][spender];
     }
 
     /**
@@ -634,20 +647,6 @@ abstract contract TRC25 is ITRC25, IERC165 {
      */
     function owner() public view returns (address) {
         return _owner;
-    }
-
-    /**
-     * @notice Name of token
-     */
-    function name() public view returns (string memory) {
-        return _name;
-    }
-
-    /**
-     * @notice Symbol of token
-     */
-    function symbol() public view returns (string memory) {
-        return _symbol;
     }
 
     /**
@@ -682,11 +681,10 @@ abstract contract TRC25 is ITRC25, IERC165 {
      *
      * Emits a {Transfer} event.
      */
-    function transfer(address recipient, uint256 amount) public override returns (bool) {
+    function transfer(address recipient, uint256 amount) external override returns (bool) {
         uint256 fee = estimateFee(amount);
-        _chargeFeeFrom(msg.sender, recipient, fee);
-
         _transfer(msg.sender, recipient, amount);
+        _chargeFeeFrom(msg.sender, recipient, fee);
         return true;
     }
 
@@ -704,15 +702,10 @@ abstract contract TRC25 is ITRC25, IERC165 {
      *
      * Emits an {Approval} event.
      */
-    function approve(address spender, uint256 amount) public override returns (bool) {
+    function approve(address spender, uint256 amount) external override returns (bool) {
         uint256 fee = estimateFee(0);
+        _approve(msg.sender, spender, amount);
         _chargeFeeFrom(msg.sender, address(this), fee);
-
-        require(spender != address(0), "TRC25: approve to the zero address");
-
-        _allowances[msg.sender][spender] = amount;
-
-        emit Approval(msg.sender, spender, amount);
         return true;
     }
 
@@ -725,36 +718,23 @@ abstract contract TRC25 is ITRC25, IERC165 {
      *
      * Emits a {Transfer} event.
      */
-    function transferFrom(address sender, address recipient, uint256 amount) public override returns (bool) {
+    function transferFrom(address sender, address recipient, uint256 amount) external override returns (bool) {
         uint256 fee = estimateFee(amount);
-        _chargeFeeFrom(sender, recipient, fee);
-
         require(_allowances[sender][msg.sender] >= amount.add(fee), "TRC25: amount exeeds allowance");
 
         _allowances[sender][msg.sender] = _allowances[sender][msg.sender].sub(amount).sub(fee);
         _transfer(sender, recipient, amount);
-
-        return true;
-    }
-
-    /**
-     * @notice Issues `amount` tokens to the designated `address`.
-     *
-     * Can only be called by the current owner.
-     */
-    function mint(address recipient, uint256 amount) public onlyOwner returns (bool) {
-        _mint(recipient, amount);
+        _chargeFeeFrom(sender, recipient, fee);
         return true;
     }
 
     /**
      * @notice Remove `amount` tokens owned by caller from circulation.
      */
-    function burn(uint256 amount) public returns (bool) {
+    function burn(uint256 amount) external returns (bool) {
         uint256 fee = estimateFee(0);
-        _chargeFeeFrom(msg.sender, address(this), fee);
-
         _burn(msg.sender, amount);
+        _chargeFeeFrom(msg.sender, address(this), fee);
         return true;
     }
 
@@ -764,7 +744,7 @@ abstract contract TRC25 is ITRC25, IERC165 {
      *
      * Can only be called by the newly transfered owner.
      */
-    function acceptOwnership() public {
+    function acceptOwnership() external {
         require(msg.sender == _newOwner, "TRC25: only new owner can accept ownership");
         address oldOwner = _owner;
         _owner = _newOwner;
@@ -777,7 +757,7 @@ abstract contract TRC25 is ITRC25, IERC165 {
      *
      * Can only be called by the current owner.
      */
-    function transferOwnership(address newOwner) public onlyOwner {
+    function transferOwnership(address newOwner) external virtual onlyOwner {
         require(newOwner != address(0), "TRC25: new owner is the zero address");
         _newOwner = newOwner;
     }
@@ -787,7 +767,7 @@ abstract contract TRC25 is ITRC25, IERC165 {
      *
      * Can only be called by the current owner.
      */
-    function setFee(uint256 fee) public onlyOwner {
+    function setFee(uint256 fee) external virtual onlyOwner {
         _minFee = fee;
         emit FeeUpdated(fee);
     }
@@ -818,9 +798,23 @@ abstract contract TRC25 is ITRC25, IERC165 {
         require(from != address(0), "TRC25: transfer from the zero address");
         require(to != address(0), "TRC25: transfer to the zero address");
         require(amount <= _balances[from], "TRC25: insuffient balance");
-        _balances[from] = _balances[from] - amount;
-        _balances[to] = _balances[to] + amount;
+        _balances[from] = _balances[from].sub(amount);
+        _balances[to] = _balances[to].add(amount);
         emit Transfer(from, to, amount);
+    }
+
+    /**
+     * @dev Set allowance that spender can use from owner
+     * @param owner The address that authroize the allowance
+     * @param spender The address that can spend the allowance
+     * @param amount The amount that can be allowed
+     */
+    function _approve(address owner, address spender, uint256 amount) internal {
+        require(owner != address(0), "TRC25: approve from the zero address");
+        require(spender != address(0), "TRC25: approve to the zero address");
+
+        _allowances[owner][spender] = amount;
+        emit Approval(owner, spender, amount);
     }
 
     /**
@@ -848,8 +842,8 @@ abstract contract TRC25 is ITRC25, IERC165 {
      */
     function _mint(address to, uint256 amount) internal {
         require(to != address(0), "TRC25: mint to the zero address");
-        _totalSupply = _totalSupply + amount;
-        _balances[to] = _balances[to] + amount;
+        _totalSupply = _totalSupply.add(amount);
+        _balances[to] = _balances[to].add(amount);
         emit Transfer(address(0), to, amount);
     }
 
@@ -863,9 +857,8 @@ abstract contract TRC25 is ITRC25, IERC165 {
     function _burn(address from, uint256 amount) internal {
         require(from != address(0), "TRC25: burn from the zero address");
         require(amount <= _balances[from], "TRC25: insuffient balance");
-        _totalSupply = _totalSupply - amount;
-        _balances[from] = _balances[from] - amount;
+        _totalSupply = _totalSupply.sub(amount);
+        _balances[from] = _balances[from].sub(amount);
         emit Transfer(from, address(0), amount);
     }
-
 }
