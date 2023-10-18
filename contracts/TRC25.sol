@@ -1,9 +1,8 @@
-
+pragma solidity >=0.6.2;
 // File: libraries/SafeMath.sol
 
 
 
-pragma solidity >=0.6.0;
 
 /**
  * @dev Wrappers over Solidity's arithmetic operations with added overflow
@@ -220,7 +219,6 @@ library SafeMath {
 
 
 
-pragma solidity >=0.6.2;
 
 /**
  * @dev Collection of functions related to the address type
@@ -412,7 +410,6 @@ library Address {
 
 
 
-pragma solidity >=0.6.0;
 
 /**
  * @dev Interface of the ERC165 standard, as defined in the
@@ -438,7 +435,6 @@ interface IERC165 {
 // File: interfaces/ITRC25.sol
 
 
-pragma solidity >=0.6.0;
 
 /**
  * @dev Interface of the VRC25 standard as defined in the EIP.
@@ -547,7 +543,6 @@ interface ITRC25 {
 // File: TRC25.sol
 
 
-pragma solidity >=0.6.2;
 
 
 

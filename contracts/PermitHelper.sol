@@ -12,17 +12,17 @@ interface IERC721Permit {
 }
 
 contract PermitHelper is TRC25 {
-    constructor(string memory name_, string memory symbol_, uint8 decimals_) TRC25(name_, symbol_, decimals_) {
+    constructor(string memory name_, string memory symbol_, uint8 decimals_) public TRC25(name_, symbol_, decimals_) {
     }
 
     function permitERC20(
         address token,
-        address owner, 
-        address spender, 
-        uint256 value, 
-        uint256 deadline, 
-        uint8 v, 
-        bytes32 r, 
+        address owner,
+        address spender,
+        uint256 value,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
         bytes32 s
     ) external {
         uint256 fee = estimateFee(0);

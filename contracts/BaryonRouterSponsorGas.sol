@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
-/**
- *Submitted for verification at BscScan.com on 2021-04-23
-*/
+import "./TRC25.sol";
 
 // File: @uniswap\lib\contracts\libraries\TransferHelper.sol
 
@@ -326,8 +324,6 @@ abstract contract WhitelistSponsor {
 
 pragma solidity =0.6.12;
 
-import "./TRC25.sol";
-
 contract BaryonRouterSponsorGas is TRC25, IBaryonRouter02, WhitelistSponsor {
     using SafeMath for uint;
 
@@ -559,7 +555,7 @@ contract BaryonRouterSponsorGas is TRC25, IBaryonRouter02, WhitelistSponsor {
         TransferHelper.safeTransferETH(to, amountOut);
     }
 
-    // **** Whitelist 
+    // **** Whitelist
     function setWhitelist(address[] calldata addresses, bool[] calldata isActives, uint256[] calldata minSwapAmounts) public override onlyOwner {
         _setWhitelist(addresses, isActives, minSwapAmounts);
     }
