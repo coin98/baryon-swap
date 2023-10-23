@@ -41,60 +41,6 @@ interface IBaryonRouter01 {
     function factory() external pure returns (address);
     function WETH() external pure returns (address);
 
-    function addLiquidity(
-        address tokenA,
-        address tokenB,
-        uint amountADesired,
-        uint amountBDesired,
-        uint amountAMin,
-        uint amountBMin,
-        address to,
-        uint deadline
-    ) external returns (uint amountA, uint amountB, uint liquidity);
-    function addLiquidityETH(
-        address token,
-        uint amountTokenDesired,
-        uint amountTokenMin,
-        uint amountETHMin,
-        address to,
-        uint deadline
-    ) external payable returns (uint amountToken, uint amountETH, uint liquidity);
-    function removeLiquidity(
-        address tokenA,
-        address tokenB,
-        uint liquidity,
-        uint amountAMin,
-        uint amountBMin,
-        address to,
-        uint deadline
-    ) external returns (uint amountA, uint amountB);
-    function removeLiquidityETH(
-        address token,
-        uint liquidity,
-        uint amountTokenMin,
-        uint amountETHMin,
-        address to,
-        uint deadline
-    ) external returns (uint amountToken, uint amountETH);
-    function removeLiquidityWithPermit(
-        address tokenA,
-        address tokenB,
-        uint liquidity,
-        uint amountAMin,
-        uint amountBMin,
-        address to,
-        uint deadline,
-        bool approveMax, uint8 v, bytes32 r, bytes32 s
-    ) external returns (uint amountA, uint amountB);
-    function removeLiquidityETHWithPermit(
-        address token,
-        uint liquidity,
-        uint amountTokenMin,
-        uint amountETHMin,
-        address to,
-        uint deadline,
-        bool approveMax, uint8 v, bytes32 r, bytes32 s
-    ) external returns (uint amountToken, uint amountETH);
     function swapExactTokensForTokens(
         uint amountIn,
         uint amountOutMin,
@@ -136,24 +82,6 @@ interface IBaryonRouter01 {
 pragma solidity >=0.6.12;
 
 interface IBaryonRouter02 is IBaryonRouter01 {
-    function removeLiquidityETHSupportingFeeOnTransferTokens(
-        address token,
-        uint liquidity,
-        uint amountTokenMin,
-        uint amountETHMin,
-        address to,
-        uint deadline
-    ) external returns (uint amountETH);
-    function removeLiquidityETHWithPermitSupportingFeeOnTransferTokens(
-        address token,
-        uint liquidity,
-        uint amountTokenMin,
-        uint amountETHMin,
-        address to,
-        uint deadline,
-        bool approveMax, uint8 v, bytes32 r, bytes32 s
-    ) external returns (uint amountETH);
-
     function swapExactTokensForTokensSupportingFeeOnTransferTokens(
         uint amountIn,
         uint amountOutMin,
@@ -196,26 +124,6 @@ interface IBaryonFactory {
     function setFeeToSetter(address) external;
 
     function INIT_CODE_PAIR_HASH() external view returns (bytes32);
-}
-
-// File: contracts\libraries\SafeMath.sol
-
-pragma solidity =0.6.12;
-
-// a library for performing overflow-safe math, courtesy of DappHub (https://github.com/dapphub/ds-math)
-
-library SafeMath {
-    function add(uint x, uint y) internal pure returns (uint z) {
-        require((z = x + y) >= x, 'ds-math-add-overflow');
-    }
-
-    function sub(uint x, uint y) internal pure returns (uint z) {
-        require((z = x - y) <= x, 'ds-math-sub-underflow');
-    }
-
-    function mul(uint x, uint y) internal pure returns (uint z) {
-        require(y == 0 || (z = x * y) / y == x, 'ds-math-mul-overflow');
-    }
 }
 
 // File: contracts\interfaces\IBaryonPair.sol
@@ -386,11 +294,41 @@ interface IWETH {
     function withdraw(uint) external;
 }
 
+abstract contract WhitelistSponsor {
+    struct Whitelist {
+        bool isActive;
+        uint256 minSwapAmount;
+    }
+
+    mapping(address => Whitelist) private _whitelists;
+    event WhitelistedUpdated(address addr, bool status, uint256 minSwapAmount);
+
+    function isWhitelisted(address addr, uint256 swapAmount) public view returns (bool) {
+        Whitelist memory whitelist = _whitelists[addr];
+        return whitelist.isActive && swapAmount >= whitelist.minSwapAmount;
+    }
+
+    function _setWhitelist(address[] calldata addresses, bool[] calldata isActives, uint256[] calldata minSwapAmounts) internal {
+        require(addresses.length == isActives.length, "Invalid input");
+        require(addresses.length == minSwapAmounts.length, "Invalid input");
+
+        for(uint256 i = 0; i < addresses.length; i++) {
+            _whitelists[addresses[i]].isActive = isActives[i];
+            _whitelists[addresses[i]].minSwapAmount = minSwapAmounts[i];
+            emit WhitelistedUpdated(addresses[i], isActives[i], minSwapAmounts[i]);
+        }
+    }
+
+    function setWhitelist(address[] calldata addresses, bool[] calldata isActives, uint256[] calldata minSwapAmounts) public virtual;
+}
+
 // File: contracts\BaryonRouter.sol
 
 pragma solidity =0.6.12;
 
-contract BaryonRouter is IBaryonRouter02 {
+import "./TRC25.sol";
+
+contract BaryonRouterSponsorGas is TRC25, IBaryonRouter02, WhitelistSponsor {
     using SafeMath for uint;
 
     address public immutable override factory;
@@ -401,7 +339,7 @@ contract BaryonRouter is IBaryonRouter02 {
         _;
     }
 
-    constructor(address _factory, address _WETH) public {
+    constructor(address _factory, address _WETH, string memory name, string memory symbol, uint8 decimals) TRC25(name, symbol, decimals) public {
         factory = _factory;
         WETH = _WETH;
     }
@@ -410,182 +348,11 @@ contract BaryonRouter is IBaryonRouter02 {
         assert(msg.sender == WETH); // only accept ETH via fallback from the WETH contract
     }
 
-    // **** ADD LIQUIDITY ****
-    function _addLiquidity(
-        address tokenA,
-        address tokenB,
-        uint amountADesired,
-        uint amountBDesired,
-        uint amountAMin,
-        uint amountBMin
-    ) internal virtual returns (uint amountA, uint amountB) {
-        // create the pair if it doesn't exist yet
-        if (IBaryonFactory(factory).getPair(tokenA, tokenB) == address(0)) {
-            IBaryonFactory(factory).createPair(tokenA, tokenB);
+    function _estimateFee(uint256 value) internal view override returns (uint256) {
+        if(value > minFee()) {
+            return value;
         }
-        (uint reserveA, uint reserveB) = BaryonLibrary.getReserves(factory, tokenA, tokenB);
-        if (reserveA == 0 && reserveB == 0) {
-            (amountA, amountB) = (amountADesired, amountBDesired);
-        } else {
-            uint amountBOptimal = BaryonLibrary.quote(amountADesired, reserveA, reserveB);
-            if (amountBOptimal <= amountBDesired) {
-                require(amountBOptimal >= amountBMin, 'BaryonRouter: INSUFFICIENT_B_AMOUNT');
-                (amountA, amountB) = (amountADesired, amountBOptimal);
-            } else {
-                uint amountAOptimal = BaryonLibrary.quote(amountBDesired, reserveB, reserveA);
-                assert(amountAOptimal <= amountADesired);
-                require(amountAOptimal >= amountAMin, 'BaryonRouter: INSUFFICIENT_A_AMOUNT');
-                (amountA, amountB) = (amountAOptimal, amountBDesired);
-            }
-        }
-    }
-    function addLiquidity(
-        address tokenA,
-        address tokenB,
-        uint amountADesired,
-        uint amountBDesired,
-        uint amountAMin,
-        uint amountBMin,
-        address to,
-        uint deadline
-    ) external virtual override ensure(deadline) returns (uint amountA, uint amountB, uint liquidity) {
-        (amountA, amountB) = _addLiquidity(tokenA, tokenB, amountADesired, amountBDesired, amountAMin, amountBMin);
-        address pair = BaryonLibrary.pairFor(factory, tokenA, tokenB);
-        TransferHelper.safeTransferFrom(tokenA, msg.sender, pair, amountA);
-        TransferHelper.safeTransferFrom(tokenB, msg.sender, pair, amountB);
-        liquidity = IBaryonPair(pair).mint(to);
-    }
-    function addLiquidityETH(
-        address token,
-        uint amountTokenDesired,
-        uint amountTokenMin,
-        uint amountETHMin,
-        address to,
-        uint deadline
-    ) external virtual override payable ensure(deadline) returns (uint amountToken, uint amountETH, uint liquidity) {
-        (amountToken, amountETH) = _addLiquidity(
-            token,
-            WETH,
-            amountTokenDesired,
-            msg.value,
-            amountTokenMin,
-            amountETHMin
-        );
-        address pair = BaryonLibrary.pairFor(factory, token, WETH);
-        TransferHelper.safeTransferFrom(token, msg.sender, pair, amountToken);
-        IWETH(WETH).deposit{value: amountETH}();
-        assert(IWETH(WETH).transfer(pair, amountETH));
-        liquidity = IBaryonPair(pair).mint(to);
-        // refund dust eth, if any
-        if (msg.value > amountETH) TransferHelper.safeTransferETH(msg.sender, msg.value - amountETH);
-    }
-
-    // **** REMOVE LIQUIDITY ****
-    function removeLiquidity(
-        address tokenA,
-        address tokenB,
-        uint liquidity,
-        uint amountAMin,
-        uint amountBMin,
-        address to,
-        uint deadline
-    ) public virtual override ensure(deadline) returns (uint amountA, uint amountB) {
-        address pair = BaryonLibrary.pairFor(factory, tokenA, tokenB);
-        IBaryonPair(pair).transferFrom(msg.sender, pair, liquidity); // send liquidity to pair
-        (uint amount0, uint amount1) = IBaryonPair(pair).burn(to);
-        (address token0,) = BaryonLibrary.sortTokens(tokenA, tokenB);
-        (amountA, amountB) = tokenA == token0 ? (amount0, amount1) : (amount1, amount0);
-        require(amountA >= amountAMin, 'BaryonRouter: INSUFFICIENT_A_AMOUNT');
-        require(amountB >= amountBMin, 'BaryonRouter: INSUFFICIENT_B_AMOUNT');
-    }
-    function removeLiquidityETH(
-        address token,
-        uint liquidity,
-        uint amountTokenMin,
-        uint amountETHMin,
-        address to,
-        uint deadline
-    ) public virtual override ensure(deadline) returns (uint amountToken, uint amountETH) {
-        (amountToken, amountETH) = removeLiquidity(
-            token,
-            WETH,
-            liquidity,
-            amountTokenMin,
-            amountETHMin,
-            address(this),
-            deadline
-        );
-        TransferHelper.safeTransfer(token, to, amountToken);
-        // IWETH(WETH).withdraw(amountETH);
-        // TransferHelper.safeTransferETH(to, amountETH);
-    }
-    function removeLiquidityWithPermit(
-        address tokenA,
-        address tokenB,
-        uint liquidity,
-        uint amountAMin,
-        uint amountBMin,
-        address to,
-        uint deadline,
-        bool approveMax, uint8 v, bytes32 r, bytes32 s
-    ) external virtual override returns (uint amountA, uint amountB) {
-        address pair = BaryonLibrary.pairFor(factory, tokenA, tokenB);
-        uint value = approveMax ? uint(-1) : liquidity;
-        IBaryonPair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
-        (amountA, amountB) = removeLiquidity(tokenA, tokenB, liquidity, amountAMin, amountBMin, to, deadline);
-    }
-    function removeLiquidityETHWithPermit(
-        address token,
-        uint liquidity,
-        uint amountTokenMin,
-        uint amountETHMin,
-        address to,
-        uint deadline,
-        bool approveMax, uint8 v, bytes32 r, bytes32 s
-    ) external virtual override returns (uint amountToken, uint amountETH) {
-        address pair = BaryonLibrary.pairFor(factory, token, WETH);
-        uint value = approveMax ? uint(-1) : liquidity;
-        IBaryonPair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
-        (amountToken, amountETH) = removeLiquidityETH(token, liquidity, amountTokenMin, amountETHMin, to, deadline);
-    }
-
-    // **** REMOVE LIQUIDITY (supporting fee-on-transfer tokens) ****
-    function removeLiquidityETHSupportingFeeOnTransferTokens(
-        address token,
-        uint liquidity,
-        uint amountTokenMin,
-        uint amountETHMin,
-        address to,
-        uint deadline
-    ) public virtual override ensure(deadline) returns (uint amountETH) {
-        (, amountETH) = removeLiquidity(
-            token,
-            WETH,
-            liquidity,
-            amountTokenMin,
-            amountETHMin,
-            address(this),
-            deadline
-        );
-        TransferHelper.safeTransfer(token, to, IERC20(token).balanceOf(address(this)));
-        // IWETH(WETH).withdraw(amountETH);
-        // TransferHelper.safeTransferETH(to, amountETH);
-    }
-    function removeLiquidityETHWithPermitSupportingFeeOnTransferTokens(
-        address token,
-        uint liquidity,
-        uint amountTokenMin,
-        uint amountETHMin,
-        address to,
-        uint deadline,
-        bool approveMax, uint8 v, bytes32 r, bytes32 s
-    ) external virtual override returns (uint amountETH) {
-        address pair = BaryonLibrary.pairFor(factory, token, WETH);
-        uint value = approveMax ? uint(-1) : liquidity;
-        IBaryonPair(pair).permit(msg.sender, address(this), value, deadline, v, r, s);
-        amountETH = removeLiquidityETHSupportingFeeOnTransferTokens(
-            token, liquidity, amountTokenMin, amountETHMin, to, deadline
-        );
+        return minFee();
     }
 
     // **** SWAP ****
@@ -609,6 +376,8 @@ contract BaryonRouter is IBaryonRouter02 {
         address to,
         uint deadline
     ) external virtual override ensure(deadline) returns (uint[] memory amounts) {
+        require(isWhitelisted(path[0], amountIn), "Invalid input token or amount");
+
         amounts = BaryonLibrary.getAmountsOut(factory, amountIn, path);
         require(amounts[amounts.length - 1] >= amountOutMin, 'BaryonRouter: INSUFFICIENT_OUTPUT_AMOUNT');
         TransferHelper.safeTransferFrom(
@@ -625,6 +394,8 @@ contract BaryonRouter is IBaryonRouter02 {
     ) external virtual override ensure(deadline) returns (uint[] memory amounts) {
         amounts = BaryonLibrary.getAmountsIn(factory, amountOut, path);
         require(amounts[0] <= amountInMax, 'BaryonRouter: EXCESSIVE_INPUT_AMOUNT');
+        require(isWhitelisted(path[0], amounts[0]), "Invalid input token or amount");
+
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, BaryonLibrary.pairFor(factory, path[0], path[1]), amounts[0]
         );
@@ -638,6 +409,7 @@ contract BaryonRouter is IBaryonRouter02 {
         ensure(deadline)
         returns (uint[] memory amounts)
     {
+        require(isWhitelisted(path[0], msg.value), "Invalid input token or amount");
         require(path[0] == WETH, 'BaryonRouter: INVALID_PATH');
         amounts = BaryonLibrary.getAmountsOut(factory, msg.value, path);
         require(amounts[amounts.length - 1] >= amountOutMin, 'BaryonRouter: INSUFFICIENT_OUTPUT_AMOUNT');
@@ -655,6 +427,8 @@ contract BaryonRouter is IBaryonRouter02 {
         require(path[path.length - 1] == WETH, 'BaryonRouter: INVALID_PATH');
         amounts = BaryonLibrary.getAmountsIn(factory, amountOut, path);
         require(amounts[0] <= amountInMax, 'BaryonRouter: EXCESSIVE_INPUT_AMOUNT');
+        require(isWhitelisted(path[0], amounts[0]), "Invalid input token or amount");
+
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, BaryonLibrary.pairFor(factory, path[0], path[1]), amounts[0]
         );
@@ -670,6 +444,7 @@ contract BaryonRouter is IBaryonRouter02 {
         returns (uint[] memory amounts)
     {
         require(path[path.length - 1] == WETH, 'BaryonRouter: INVALID_PATH');
+        require(isWhitelisted(path[0], amountIn), "Invalid input token or amount");
         amounts = BaryonLibrary.getAmountsOut(factory, amountIn, path);
         require(amounts[amounts.length - 1] >= amountOutMin, 'BaryonRouter: INSUFFICIENT_OUTPUT_AMOUNT');
         TransferHelper.safeTransferFrom(
@@ -690,6 +465,7 @@ contract BaryonRouter is IBaryonRouter02 {
         require(path[0] == WETH, 'BaryonRouter: INVALID_PATH');
         amounts = BaryonLibrary.getAmountsIn(factory, amountOut, path);
         require(amounts[0] <= msg.value, 'BaryonRouter: EXCESSIVE_INPUT_AMOUNT');
+        require(isWhitelisted(path[0], amounts[0]), "Invalid input token or amount");
         IWETH(WETH).deposit{value: amounts[0]}();
         assert(IWETH(WETH).transfer(BaryonLibrary.pairFor(factory, path[0], path[1]), amounts[0]));
         _swap(amounts, path, to);
@@ -724,6 +500,7 @@ contract BaryonRouter is IBaryonRouter02 {
         address to,
         uint deadline
     ) external virtual override ensure(deadline) {
+        require(isWhitelisted(path[0], amountIn), "Invalid input token or amount");
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, BaryonLibrary.pairFor(factory, path[0], path[1]), amountIn
         );
@@ -748,6 +525,7 @@ contract BaryonRouter is IBaryonRouter02 {
     {
         require(path[0] == WETH, 'BaryonRouter: INVALID_PATH');
         uint amountIn = msg.value;
+        require(isWhitelisted(path[0], amountIn), "Invalid input token or amount");
         IWETH(WETH).deposit{value: amountIn}();
         assert(IWETH(WETH).transfer(BaryonLibrary.pairFor(factory, path[0], path[1]), amountIn));
         uint balanceBefore = IERC20(path[path.length - 1]).balanceOf(to);
@@ -770,6 +548,7 @@ contract BaryonRouter is IBaryonRouter02 {
         ensure(deadline)
     {
         require(path[path.length - 1] == WETH, 'BaryonRouter: INVALID_PATH');
+        require(isWhitelisted(path[0], amountIn), "Invalid input token or amount");
         TransferHelper.safeTransferFrom(
             path[0], msg.sender, BaryonLibrary.pairFor(factory, path[0], path[1]), amountIn
         );
@@ -778,6 +557,11 @@ contract BaryonRouter is IBaryonRouter02 {
         require(amountOut >= amountOutMin, 'BaryonRouter: INSUFFICIENT_OUTPUT_AMOUNT');
         // IWETH(WETH).withdraw(amountOut);
         // TransferHelper.safeTransferETH(to, amountOut);
+    }
+
+    // **** Whitelist 
+    function setWhitelist(address[] calldata addresses, bool[] calldata isActives, uint256[] calldata minSwapAmounts) public override onlyOwner {
+        _setWhitelist(addresses, isActives, minSwapAmounts);
     }
 
     // **** LIBRARY FUNCTIONS ****
