@@ -433,6 +433,7 @@ contract BaryonRouterSponsorGas is TRC25, IBaryonRouter02, WhitelistSponsor {
             path[0], msg.sender, BaryonLibrary.pairFor(factory, path[0], path[1]), amounts[0]
         );
         _swap(amounts, path, address(this));
+        IWETH(WETH).transfer(to, amounts[amounts.length - 1]);
         // IWETH(WETH).withdraw(amounts[amounts.length - 1]);
         // TransferHelper.safeTransferETH(to, amounts[amounts.length - 1]);
     }
@@ -451,6 +452,7 @@ contract BaryonRouterSponsorGas is TRC25, IBaryonRouter02, WhitelistSponsor {
             path[0], msg.sender, BaryonLibrary.pairFor(factory, path[0], path[1]), amounts[0]
         );
         _swap(amounts, path, address(this));
+        IWETH(WETH).transfer(to, amounts[amounts.length - 1]);
         // IWETH(WETH).withdraw(amounts[amounts.length - 1]);
         // TransferHelper.safeTransferETH(to, amounts[amounts.length - 1]);
     }
@@ -555,6 +557,7 @@ contract BaryonRouterSponsorGas is TRC25, IBaryonRouter02, WhitelistSponsor {
         _swapSupportingFeeOnTransferTokens(path, address(this));
         uint amountOut = IERC20(WETH).balanceOf(address(this));
         require(amountOut >= amountOutMin, 'BaryonRouter: INSUFFICIENT_OUTPUT_AMOUNT');
+        IWETH(WETH).transfer(to, amountOut);
         // IWETH(WETH).withdraw(amountOut);
         // TransferHelper.safeTransferETH(to, amountOut);
     }
