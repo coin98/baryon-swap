@@ -41,6 +41,60 @@ interface IBaryonRouter01 {
     function factory() external pure returns (address);
     function WETH() external pure returns (address);
 
+    function addLiquidity(
+        address tokenA,
+        address tokenB,
+        uint amountADesired,
+        uint amountBDesired,
+        uint amountAMin,
+        uint amountBMin,
+        address to,
+        uint deadline
+    ) external returns (uint amountA, uint amountB, uint liquidity);
+    function addLiquidityETH(
+        address token,
+        uint amountTokenDesired,
+        uint amountTokenMin,
+        uint amountETHMin,
+        address to,
+        uint deadline
+    ) external payable returns (uint amountToken, uint amountETH, uint liquidity);
+    function removeLiquidity(
+        address tokenA,
+        address tokenB,
+        uint liquidity,
+        uint amountAMin,
+        uint amountBMin,
+        address to,
+        uint deadline
+    ) external returns (uint amountA, uint amountB);
+    function removeLiquidityETH(
+        address token,
+        uint liquidity,
+        uint amountTokenMin,
+        uint amountETHMin,
+        address to,
+        uint deadline
+    ) external returns (uint amountToken, uint amountETH);
+    function removeLiquidityWithPermit(
+        address tokenA,
+        address tokenB,
+        uint liquidity,
+        uint amountAMin,
+        uint amountBMin,
+        address to,
+        uint deadline,
+        bool approveMax, uint8 v, bytes32 r, bytes32 s
+    ) external returns (uint amountA, uint amountB);
+    function removeLiquidityETHWithPermit(
+        address token,
+        uint liquidity,
+        uint amountTokenMin,
+        uint amountETHMin,
+        address to,
+        uint deadline,
+        bool approveMax, uint8 v, bytes32 r, bytes32 s
+    ) external returns (uint amountToken, uint amountETH);
     function swapExactTokensForTokens(
         uint amountIn,
         uint amountOutMin,
@@ -82,6 +136,23 @@ interface IBaryonRouter01 {
 pragma solidity >=0.6.12;
 
 interface IBaryonRouter02 is IBaryonRouter01 {
+    function removeLiquidityETHSupportingFeeOnTransferTokens(
+        address token,
+        uint liquidity,
+        uint amountTokenMin,
+        uint amountETHMin,
+        address to,
+        uint deadline
+    ) external returns (uint amountETH);
+    function removeLiquidityETHWithPermitSupportingFeeOnTransferTokens(
+        address token,
+        uint liquidity,
+        uint amountTokenMin,
+        uint amountETHMin,
+        address to,
+        uint deadline,
+        bool approveMax, uint8 v, bytes32 r, bytes32 s
+    ) external returns (uint amountETH);
     function swapExactTokensForTokensSupportingFeeOnTransferTokens(
         uint amountIn,
         uint amountOutMin,
@@ -322,7 +393,7 @@ abstract contract WhitelistSponsor {
     function setWhitelist(address[] calldata addresses, bool[] calldata isActives, uint256[] calldata minSwapAmounts) public virtual;
 }
 
-// File: contracts\BaryonRouter.sol
+// File: contracts\BaryonRouterSponsorGas.sol
 
 pragma solidity =0.6.12;
 
@@ -661,10 +732,10 @@ contract BaryonRouterSponsorGas is TRC25, IBaryonRouter02, WhitelistSponsor {
             uint amountInput;
             uint amountOutput;
             { // scope to avoid stack too deep errors
-            (uint reserve0, uint reserve1,) = pair.getReserves();
-            (uint reserveInput, uint reserveOutput) = input == token0 ? (reserve0, reserve1) : (reserve1, reserve0);
-            amountInput = IERC20(input).balanceOf(address(pair)).sub(reserveInput);
-            amountOutput = BaryonLibrary.getAmountOut(amountInput, reserveInput, reserveOutput);
+                (uint reserve0, uint reserve1,) = pair.getReserves();
+                (uint reserveInput, uint reserveOutput) = input == token0 ? (reserve0, reserve1) : (reserve1, reserve0);
+                amountInput = IERC20(input).balanceOf(address(pair)).sub(reserveInput);
+                amountOutput = BaryonLibrary.getAmountOut(amountInput, reserveInput, reserveOutput);
             }
             (uint amount0Out, uint amount1Out) = input == token0 ? (uint(0), amountOutput) : (amountOutput, uint(0));
             address to = i < path.length - 2 ? BaryonLibrary.pairFor(factory, output, path[i + 2]) : _to;
